@@ -1,5 +1,46 @@
 # Trading Journal React
 
+<img width="1267" height="850" alt="image" src="https://github.com/user-attachments/assets/5a0c2e45-b18c-45ff-baac-83cccfb98f94" />
+
+
+📊 Trading Journal React App
+
+A modern, responsive trading journal dashboard built with React to help traders track performance, manage risk, and analyze consistency over time.
+
+🚀 Features
+
+📈 Dashboard Overview
+
+Total P/L, Win Rate, Average Return
+
+Max Drawdown, Sharpe Ratio, Sortino Ratio
+
+Risk-to-Reward, Expectancy, Recovery Factor
+
+📝 Trade Entry System
+
+Add trades with entry/exit price, stop loss, quantity, and logic
+
+Auto-calculated profit/loss and percentage returns
+
+📊 Advanced Metrics
+
+Growth Metrics
+
+Risk Metrics
+
+Consistency Metrics
+
+Quant Grade Analysis
+
+🎨 Modern UI
+
+Clean, gradient-based dashboard design
+
+Intuitive navigation and responsive layout
+
+
+
 A React application for tracking and managing your trading journal.
 
 ## Getting Started
