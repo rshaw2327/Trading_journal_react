@@ -1,6 +1,7 @@
 # Trading Journal React
 
-<img width="1267" height="850" alt="image" src="https://github.com/user-attachments/assets/5a0c2e45-b18c-45ff-baac-83cccfb98f94" />
+<img width="1311" height="906" alt="image" src="https://github.com/user-attachments/assets/702e725c-b78d-4cf2-b871-2427b9f0757d" />
+
 
 
 📊 Trading Journal React App
