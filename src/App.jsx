@@ -1,11 +1,40 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import "./App.css";
 
+const InfoIcon = ({ text }) => {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <span
+      className="info-icon"
+      aria-label="Info"
+      role="img"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      i
+      {open &&
+        createPortal(
+          <div className="info-modal" aria-hidden="true">
+            <div className="info-modal-backdrop" />
+            <div className="info-modal-content">{text}</div>
+          </div>,
+          document.body,
+        )}
+    </span>
+  );
+};
+
 function App() {
+  const apiBase = import.meta.env.VITE_API_URL || "http://localhost:5000";
   const [trades, setTrades] = useState([]);
   const [newTrade, setNewTrade] = useState({
     date: "",
     symbol: "",
+    side: "long",
+    riskReward: "3:1",
+    riskPercent: "1",
     buyPrice: "",
     quantity: "",
     entryLogic: "",
@@ -18,44 +47,103 @@ function App() {
   });
   const [activeTab, setActiveTab] = useState("dashboard");
   const [activeTimeRange, setActiveTimeRange] = useState("since-inception");
+  const [symbolSideMap, setSymbolSideMap] = useState({});
+  const [editingTradeId, setEditingTradeId] = useState(null);
+  const [editTrade, setEditTrade] = useState(null);
+  const topScrollRef = useRef(null);
+  const tableScrollRef = useRef(null);
+  const topScrollContentRef = useRef(null);
 
-  const calculateProfitLoss = (buyPrice, sellPrice, quantity) => {
+  const calculateProfitLoss = (
+    buyPrice,
+    sellPrice,
+    quantity,
+    side = "long",
+  ) => {
     const buy = parseFloat(buyPrice) || 0;
     const sell = parseFloat(sellPrice) || 0;
     const qty = parseFloat(quantity) || 0;
     if (buy > 0 && sell > 0 && qty > 0) {
-      return ((sell - buy) * qty).toFixed(2);
+      const direction = side === "short" ? -1 : 1;
+      return ((sell - buy) * qty * direction).toFixed(2);
     }
     return "";
   };
 
-  const calculatePercent = (buyPrice, sellPrice) => {
+  const calculatePercent = (buyPrice, sellPrice, side = "long") => {
     const buy = parseFloat(buyPrice) || 0;
     const sell = parseFloat(sellPrice) || 0;
     if (buy > 0 && sell > 0) {
-      return (((sell - buy) / buy) * 100).toFixed(2);
+      const direction = side === "short" ? -1 : 1;
+      return (((sell - buy) / buy) * 100 * direction).toFixed(2);
     }
     return "";
+  };
+
+  const parseRiskReward = (value) => {
+    if (!value) return null;
+    const [reward, risk] = value.split(":").map((part) => Number(part));
+    if (!reward || !risk) return null;
+    return reward / risk;
+  };
+
+  const applyRiskTargets = (trade) => {
+    const buy = parseFloat(trade.buyPrice) || 0;
+    const riskPercent = parseFloat(trade.riskPercent) || 0;
+    const ratio = parseRiskReward(trade.riskReward);
+    if (buy <= 0 || riskPercent <= 0 || !ratio) {
+      return trade;
+    }
+
+    const riskAmount = buy * (riskPercent / 100);
+    const isShort = trade.side === "short";
+    const stopLoss = isShort ? buy + riskAmount : buy - riskAmount;
+    const takeProfit = isShort
+      ? buy - riskAmount * ratio
+      : buy + riskAmount * ratio;
+
+    return {
+      ...trade,
+      stopLoss: stopLoss.toFixed(2),
+      sellPrice: takeProfit.toFixed(2),
+    };
   };
 
   const handleInputChange = (field, value) => {
     setNewTrade((prev) => {
-      const updated = { ...prev, [field]: value };
+      let updated = { ...prev, [field]: value };
+      if (field === "symbol" && symbolSideMap[value]) {
+        updated.side = symbolSideMap[value];
+      }
+
+      if (
+        field === "buyPrice" ||
+        field === "riskPercent" ||
+        field === "riskReward" ||
+        field === "side"
+      ) {
+        updated = applyRiskTargets(updated);
+      }
 
       // Auto-calculate profit/loss and percentage when relevant fields change
       if (
         field === "buyPrice" ||
         field === "sellPrice" ||
-        field === "quantity"
+        field === "quantity" ||
+        field === "side" ||
+        field === "riskPercent" ||
+        field === "riskReward"
       ) {
         const profitLoss = calculateProfitLoss(
           field === "buyPrice" ? value : updated.buyPrice,
           field === "sellPrice" ? value : updated.sellPrice,
-          field === "quantity" ? value : updated.quantity
+          field === "quantity" ? value : updated.quantity,
+          field === "side" ? value : updated.side,
         );
         const percent = calculatePercent(
           field === "buyPrice" ? value : updated.buyPrice,
-          field === "sellPrice" ? value : updated.sellPrice
+          field === "sellPrice" ? value : updated.sellPrice,
+          field === "side" ? value : updated.side,
         );
         updated.profitLoss = profitLoss;
         updated.percent = percent;
@@ -65,22 +153,193 @@ function App() {
     });
   };
 
-  const handleAddTrade = () => {
+  const handleEditChange = (field, value) => {
+    setEditTrade((prev) => {
+      if (!prev) return prev;
+      let updated = { ...prev, [field]: value };
+
+      if (
+        field === "buyPrice" ||
+        field === "riskPercent" ||
+        field === "riskReward" ||
+        field === "side"
+      ) {
+        updated = applyRiskTargets(updated);
+      }
+
+      if (
+        field === "buyPrice" ||
+        field === "sellPrice" ||
+        field === "quantity" ||
+        field === "side" ||
+        field === "riskPercent" ||
+        field === "riskReward"
+      ) {
+        const profitLoss = calculateProfitLoss(
+          field === "buyPrice" ? value : updated.buyPrice,
+          field === "sellPrice" ? value : updated.sellPrice,
+          field === "quantity" ? value : updated.quantity,
+          field === "side" ? value : updated.side,
+        );
+        const percent = calculatePercent(
+          field === "buyPrice" ? value : updated.buyPrice,
+          field === "sellPrice" ? value : updated.sellPrice,
+          field === "side" ? value : updated.side,
+        );
+        updated.profitLoss = profitLoss;
+        updated.percent = percent;
+      }
+
+      return updated;
+    });
+  };
+
+  useEffect(() => {
+    if (newTrade.symbol) {
+      setSymbolSideMap((prev) => ({
+        ...prev,
+        [newTrade.symbol]: newTrade.side,
+      }));
+    }
+  }, [newTrade.symbol, newTrade.side]);
+
+  const resetNewTrade = () => {
+    setNewTrade({
+      date: "",
+      symbol: "",
+      side: "long",
+      riskReward: "3:1",
+      riskPercent: "1",
+      buyPrice: "",
+      quantity: "",
+      entryLogic: "",
+      sellPrice: "",
+      stopLoss: "",
+      profitLoss: "",
+      exitLogic: "",
+      percent: "",
+      notes: "",
+    });
+  };
+
+  useEffect(() => {
+    const fetchTrades = async () => {
+      try {
+        const response = await fetch(`${apiBase}/api/trades`);
+        if (!response.ok) throw new Error("Failed to load trades");
+        const data = await response.json();
+        setTrades(data);
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    fetchTrades();
+  }, [apiBase]);
+
+  useEffect(() => {
+    const topScroll = topScrollRef.current;
+    const tableScroll = tableScrollRef.current;
+    const topContent = topScrollContentRef.current;
+    if (!topScroll || !tableScroll || !topContent) return;
+
+    let syncing = false;
+
+    const syncTopFromTable = () => {
+      if (syncing) return;
+      syncing = true;
+      topScroll.scrollLeft = tableScroll.scrollLeft;
+      syncing = false;
+    };
+
+    const syncTableFromTop = () => {
+      if (syncing) return;
+      syncing = true;
+      tableScroll.scrollLeft = topScroll.scrollLeft;
+      syncing = false;
+    };
+
+    const updateWidth = () => {
+      topContent.style.width = `${tableScroll.scrollWidth}px`;
+    };
+
+    updateWidth();
+    window.addEventListener("resize", updateWidth);
+    tableScroll.addEventListener("scroll", syncTopFromTable);
+    topScroll.addEventListener("scroll", syncTableFromTop);
+
+    return () => {
+      window.removeEventListener("resize", updateWidth);
+      tableScroll.removeEventListener("scroll", syncTopFromTable);
+      topScroll.removeEventListener("scroll", syncTableFromTop);
+    };
+  }, [trades.length]);
+
+  const handleAddTrade = async () => {
     if (newTrade.symbol && newTrade.buyPrice) {
-      setTrades([...trades, { ...newTrade, id: Date.now() }]);
-      setNewTrade({
-        date: "",
-        symbol: "",
-        buyPrice: "",
-        quantity: "",
-        entryLogic: "",
-        sellPrice: "",
-        stopLoss: "",
-        profitLoss: "",
-        exitLogic: "",
-        percent: "",
-        notes: "",
+      try {
+        const response = await fetch(`${apiBase}/api/trades`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(newTrade),
+        });
+        if (!response.ok) throw new Error("Failed to save trade");
+        const savedTrade = await response.json();
+        setTrades((prev) => [savedTrade, ...prev]);
+        resetNewTrade();
+      } catch (error) {
+        console.error(error);
+      }
+    }
+  };
+
+  const handleDeleteTrade = async (tradeId) => {
+    try {
+      const response = await fetch(`${apiBase}/api/trades/${tradeId}`, {
+        method: "DELETE",
       });
+      if (!response.ok) throw new Error("Failed to delete trade");
+      setTrades((prev) =>
+        prev.filter((trade) => (trade._id || trade.id) !== tradeId),
+      );
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const startEditTrade = (trade) => {
+    const tradeId = trade._id || trade.id;
+    setEditingTradeId(tradeId);
+    setEditTrade({
+      ...trade,
+      date: trade.date ? trade.date.slice(0, 10) : "",
+      side: trade.side || "long",
+    });
+  };
+
+  const cancelEditTrade = () => {
+    setEditingTradeId(null);
+    setEditTrade(null);
+  };
+
+  const saveEditTrade = async () => {
+    if (!editTrade) return;
+    try {
+      const response = await fetch(`${apiBase}/api/trades/${editingTradeId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editTrade),
+      });
+      if (!response.ok) throw new Error("Failed to update trade");
+      const updatedTrade = await response.json();
+      setTrades((prev) =>
+        prev.map((trade) =>
+          (trade._id || trade.id) === editingTradeId ? updatedTrade : trade,
+        ),
+      );
+      cancelEditTrade();
+    } catch (error) {
+      console.error(error);
     }
   };
 
@@ -88,7 +347,12 @@ function App() {
     const pl =
       parseFloat(trade.profitLoss) ||
       parseFloat(
-        calculateProfitLoss(trade.buyPrice, trade.sellPrice, trade.quantity)
+        calculateProfitLoss(
+          trade.buyPrice,
+          trade.sellPrice,
+          trade.quantity,
+          trade.side,
+        ),
       ) ||
       0;
     return sum + pl;
@@ -101,7 +365,12 @@ function App() {
             const pl =
               parseFloat(t.profitLoss) ||
               parseFloat(
-                calculateProfitLoss(t.buyPrice, t.sellPrice, t.quantity)
+                calculateProfitLoss(
+                  t.buyPrice,
+                  t.sellPrice,
+                  t.quantity,
+                  t.side,
+                ),
               ) ||
               0;
             return pl > 0;
@@ -118,7 +387,9 @@ function App() {
           trades.reduce((sum, trade) => {
             const percent =
               parseFloat(trade.percent) ||
-              parseFloat(calculatePercent(trade.buyPrice, trade.sellPrice)) ||
+              parseFloat(
+                calculatePercent(trade.buyPrice, trade.sellPrice, trade.side),
+              ) ||
               0;
             return sum + percent;
           }, 0) / trades.length
@@ -137,7 +408,7 @@ function App() {
       const pl =
         parseFloat(trade.profitLoss) ||
         parseFloat(
-          calculateProfitLoss(trade.buyPrice, trade.sellPrice, trade.quantity)
+          calculateProfitLoss(trade.buyPrice, trade.sellPrice, trade.quantity),
         ) ||
         0;
       cumulativePL += pl;
@@ -212,7 +483,7 @@ function App() {
     const downsideVariance =
       negativeReturns.reduce(
         (sum, r) => sum + Math.pow(r - avgNegativeReturn, 2),
-        0
+        0,
       ) / negativeReturns.length;
     const downsideDev = Math.sqrt(downsideVariance);
 
@@ -270,7 +541,12 @@ function App() {
       const pl =
         parseFloat(trade.profitLoss) ||
         parseFloat(
-          calculateProfitLoss(trade.buyPrice, trade.sellPrice, trade.quantity)
+          calculateProfitLoss(
+            trade.buyPrice,
+            trade.sellPrice,
+            trade.quantity,
+            trade.side,
+          ),
         ) ||
         0;
       return pl;
@@ -344,7 +620,9 @@ function App() {
   const returnPercents = trades.map((trade) => {
     const percent =
       parseFloat(trade.percent) ||
-      parseFloat(calculatePercent(trade.buyPrice, trade.sellPrice)) ||
+      parseFloat(
+        calculatePercent(trade.buyPrice, trade.sellPrice, trade.side),
+      ) ||
       0;
     return percent;
   });
@@ -357,8 +635,8 @@ function App() {
       ? Math.sqrt(
           returnPercents.reduce(
             (sum, r) => sum + Math.pow(r - avgReturnPercent, 2),
-            0
-          ) / returnPercents.length
+            0,
+          ) / returnPercents.length,
         )
       : 0;
   const negativeReturnPercents = returnPercents.filter((r) => r < 0);
@@ -372,8 +650,8 @@ function App() {
       ? Math.sqrt(
           negativeReturnPercents.reduce(
             (sum, r) => sum + Math.pow(r - avgNegativeReturn, 2),
-            0
-          ) / negativeReturnPercents.length
+            0,
+          ) / negativeReturnPercents.length,
         )
       : 0;
   const upReturns = returnPercents.filter((r) => r >= 0);
@@ -409,7 +687,7 @@ function App() {
     returnPercents.length > 2 && returnStdDev !== 0
       ? returnPercents.reduce(
           (sum, r) => sum + Math.pow(r - avgReturnPercent, 3),
-          0
+          0,
         ) /
         returnPercents.length /
         Math.pow(returnStdDev, 3)
@@ -418,7 +696,7 @@ function App() {
     returnPercents.length > 3 && returnStdDev !== 0
       ? returnPercents.reduce(
           (sum, r) => sum + Math.pow(r - avgReturnPercent, 4),
-          0
+          0,
         ) /
         returnPercents.length /
         Math.pow(returnStdDev, 4)
@@ -538,7 +816,10 @@ function App() {
                   <div className="stat-card stat-card-1">
                     <div className="stat-icon">💰</div>
                     <div className="stat-content">
-                      <h3>Total P/L</h3>
+                      <h3>
+                        Total P/L
+                        <InfoIcon text="Sum of profit/loss for all trades. P/L = (Sell - Buy) * Qty." />
+                      </h3>
                       <p
                         className={
                           totalProfitLoss >= 0 ? "positive" : "negative"
@@ -552,7 +833,10 @@ function App() {
                   <div className="stat-card stat-card-2">
                     <div className="stat-icon">📊</div>
                     <div className="stat-content">
-                      <h3>Total Trades</h3>
+                      <h3>
+                        Total Trades
+                        <InfoIcon text="Count of all recorded trades." />
+                      </h3>
                       <p>{totalTrades}</p>
                     </div>
                   </div>
@@ -560,7 +844,10 @@ function App() {
                   <div className="stat-card stat-card-3">
                     <div className="stat-icon">🎯</div>
                     <div className="stat-content">
-                      <h3>Win Rate</h3>
+                      <h3>
+                        Win Rate
+                        <InfoIcon text="Winning trades / total trades * 100%." />
+                      </h3>
                       <p>{winRate}%</p>
                     </div>
                   </div>
@@ -568,7 +855,10 @@ function App() {
                   <div className="stat-card stat-card-4">
                     <div className="stat-icon">📈</div>
                     <div className="stat-content">
-                      <h3>Avg Return</h3>
+                      <h3>
+                        Avg Return
+                        <InfoIcon text="Average of trade % returns. Return% = (Sell - Buy) / Buy * 100." />
+                      </h3>
                       <p className={avgReturn >= 0 ? "positive" : "negative"}>
                         {avgReturn}%
                       </p>
@@ -578,7 +868,10 @@ function App() {
                   <div className="stat-card stat-card-5">
                     <div className="stat-icon">📉</div>
                     <div className="stat-content">
-                      <h3>Max Drawdown</h3>
+                      <h3>
+                        Max Drawdown
+                        <InfoIcon text="Largest peak-to-trough decline in cumulative P/L." />
+                      </h3>
                       <p className="negative">${maxDrawdown.toFixed(2)}</p>
                     </div>
                   </div>
@@ -586,14 +879,17 @@ function App() {
                   <div className="stat-card stat-card-6">
                     <div className="stat-icon">⚡</div>
                     <div className="stat-content">
-                      <h3>Sharpe Ratio</h3>
+                      <h3>
+                        Sharpe Ratio
+                        <InfoIcon text="Average return / standard deviation of returns (risk-free rate assumed 0)." />
+                      </h3>
                       <p
                         className={
                           sharpeRatio >= 1
                             ? "positive"
                             : sharpeRatio >= 0
-                            ? ""
-                            : "negative"
+                              ? ""
+                              : "negative"
                         }
                       >
                         {sharpeRatio.toFixed(2)}
@@ -604,14 +900,17 @@ function App() {
                   <div className="stat-card stat-card-7">
                     <div className="stat-icon">🎯</div>
                     <div className="stat-content">
-                      <h3>Sortino Ratio</h3>
+                      <h3>
+                        Sortino Ratio
+                        <InfoIcon text="Average return / downside deviation (risk-free rate assumed 0)." />
+                      </h3>
                       <p
                         className={
                           sortinoRatio >= 1
                             ? "positive"
                             : sortinoRatio >= 0
-                            ? ""
-                            : "negative"
+                              ? ""
+                              : "negative"
                         }
                       >
                         {sortinoRatio === 999 ? "∞" : sortinoRatio.toFixed(2)}
@@ -622,14 +921,17 @@ function App() {
                   <div className="stat-card stat-card-8">
                     <div className="stat-icon">⚖️</div>
                     <div className="stat-content">
-                      <h3>Risk to Reward</h3>
+                      <h3>
+                        Risk to Reward
+                        <InfoIcon text="Average of Reward / Risk. Reward = |Sell - Buy|, Risk = |Buy - Stop Loss|." />
+                      </h3>
                       <p
                         className={
                           riskToRewardRatio >= 2
                             ? "positive"
                             : riskToRewardRatio >= 1
-                            ? ""
-                            : "negative"
+                              ? ""
+                              : "negative"
                         }
                       >
                         {riskToRewardRatio.toFixed(2)}:1
@@ -640,7 +942,10 @@ function App() {
                   <div className="stat-card stat-card-9">
                     <div className="stat-icon">💎</div>
                     <div className="stat-content">
-                      <h3>Expectancy</h3>
+                      <h3>
+                        Expectancy
+                        <InfoIcon text="(Win Rate * Avg Win) - (Loss Rate * Avg Loss)." />
+                      </h3>
                       <p className={expectancy >= 0 ? "positive" : "negative"}>
                         ${expectancy.toFixed(2)}
                       </p>
@@ -650,7 +955,10 @@ function App() {
                   <div className="stat-card stat-card-10">
                     <div className="stat-icon">🔄</div>
                     <div className="stat-content">
-                      <h3>Recovery Factor</h3>
+                      <h3>
+                        Recovery Factor
+                        <InfoIcon text="Net Profit / |Max Drawdown|." />
+                      </h3>
                       <p
                         className={
                           recoveryFactor >= 1 ? "positive" : "negative"
@@ -664,14 +972,17 @@ function App() {
                   <div className="stat-card stat-card-11">
                     <div className="stat-icon">📊</div>
                     <div className="stat-content">
-                      <h3>Rolling Sharpe</h3>
+                      <h3>
+                        Rolling Sharpe
+                        <InfoIcon text="Sharpe ratio on the most recent 20 trades." />
+                      </h3>
                       <p
                         className={
                           rollingSharpe >= 1
                             ? "positive"
                             : rollingSharpe >= 0
-                            ? ""
-                            : "negative"
+                              ? ""
+                              : "negative"
                         }
                       >
                         {rollingSharpe.toFixed(2)}
@@ -689,12 +1000,21 @@ function App() {
                     </button>
                   </div>
 
-                  <div className="table-wrapper">
+                  <div className="table-scrollbar" ref={topScrollRef}>
+                    <div
+                      className="table-scrollbar-content"
+                      ref={topScrollContentRef}
+                    />
+                  </div>
+                  <div className="table-wrapper" ref={tableScrollRef}>
                     <table className="trades-table">
                       <thead>
                         <tr>
                           <th>Date</th>
                           <th>Stock/Symbol</th>
+                          <th>Side</th>
+                          <th>R:R</th>
+                          <th>Risk %</th>
                           <th>Buy Price</th>
                           <th>Quantity</th>
                           <th>Entry Logic</th>
@@ -726,6 +1046,41 @@ function App() {
                               value={newTrade.symbol}
                               onChange={(e) =>
                                 handleInputChange("symbol", e.target.value)
+                              }
+                            />
+                          </td>
+                          <td>
+                            <select
+                              value={newTrade.side}
+                              onChange={(e) =>
+                                handleInputChange("side", e.target.value)
+                              }
+                            >
+                              <option value="long">Long</option>
+                              <option value="short">Short</option>
+                            </select>
+                          </td>
+                          <td>
+                            <select
+                              value={newTrade.riskReward}
+                              onChange={(e) =>
+                                handleInputChange("riskReward", e.target.value)
+                              }
+                            >
+                              <option value="1:1">1:1</option>
+                              <option value="2:1">2:1</option>
+                              <option value="3:1">3:1</option>
+                              <option value="4:1">4:1</option>
+                            </select>
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              step="0.1"
+                              placeholder="1.0"
+                              value={newTrade.riskPercent}
+                              onChange={(e) =>
+                                handleInputChange("riskPercent", e.target.value)
                               }
                             />
                           </td>
@@ -848,57 +1203,269 @@ function App() {
                             calculateProfitLoss(
                               trade.buyPrice,
                               trade.sellPrice,
-                              trade.quantity
+                              trade.quantity,
+                              trade.side,
                             );
                           const calculatedPercent =
                             trade.percent ||
-                            calculatePercent(trade.buyPrice, trade.sellPrice);
+                            calculatePercent(
+                              trade.buyPrice,
+                              trade.sellPrice,
+                              trade.side,
+                            );
 
                           const plValue = parseFloat(calculatedPL || 0);
                           const percentValue = parseFloat(
-                            calculatedPercent || 0
+                            calculatedPercent || 0,
                           );
 
+                          const tradeId = trade._id || trade.id;
+
+                          const isEditing = editingTradeId === tradeId;
+                          const rowData = isEditing ? editTrade : trade;
+
                           return (
-                            <tr key={trade.id} className="trade-row">
-                              <td>{trade.date || "-"}</td>
-                              <td className="symbol-cell">{trade.symbol}</td>
+                            <tr key={tradeId} className="trade-row">
                               <td>
-                                ${parseFloat(trade.buyPrice || 0).toFixed(2)}
+                                {isEditing ? (
+                                  <input
+                                    type="date"
+                                    value={rowData?.date || ""}
+                                    onChange={(e) =>
+                                      handleEditChange("date", e.target.value)
+                                    }
+                                  />
+                                ) : (
+                                  trade.date || "-"
+                                )}
                               </td>
-                              <td>{trade.quantity || "-"}</td>
-                              <td>{trade.entryLogic || "-"}</td>
-                              <td>
-                                ${parseFloat(trade.sellPrice || 0).toFixed(2)}
+                              <td className="symbol-cell">
+                                {isEditing ? (
+                                  <input
+                                    type="text"
+                                    value={rowData?.symbol || ""}
+                                    onChange={(e) =>
+                                      handleEditChange("symbol", e.target.value)
+                                    }
+                                  />
+                                ) : (
+                                  trade.symbol
+                                )}
                               </td>
                               <td>
-                                ${parseFloat(trade.stopLoss || 0).toFixed(2)}
+                                {isEditing ? (
+                                  <select
+                                    value={rowData?.side || "long"}
+                                    onChange={(e) =>
+                                      handleEditChange("side", e.target.value)
+                                    }
+                                  >
+                                    <option value="long">Long</option>
+                                    <option value="short">Short</option>
+                                  </select>
+                                ) : trade.side ? (
+                                  trade.side.toUpperCase()
+                                ) : (
+                                  "-"
+                                )}
+                              </td>
+                              <td>
+                                {isEditing ? (
+                                  <select
+                                    value={rowData?.riskReward || "3:1"}
+                                    onChange={(e) =>
+                                      handleEditChange(
+                                        "riskReward",
+                                        e.target.value,
+                                      )
+                                    }
+                                  >
+                                    <option value="1:1">1:1</option>
+                                    <option value="2:1">2:1</option>
+                                    <option value="3:1">3:1</option>
+                                    <option value="4:1">4:1</option>
+                                  </select>
+                                ) : (
+                                  trade.riskReward || "-"
+                                )}
+                              </td>
+                              <td>
+                                {isEditing ? (
+                                  <input
+                                    type="number"
+                                    step="0.1"
+                                    value={rowData?.riskPercent || ""}
+                                    onChange={(e) =>
+                                      handleEditChange(
+                                        "riskPercent",
+                                        e.target.value,
+                                      )
+                                    }
+                                  />
+                                ) : trade.riskPercent ? (
+                                  `${trade.riskPercent}%`
+                                ) : (
+                                  "-"
+                                )}
+                              </td>
+                              <td>
+                                {isEditing ? (
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={rowData?.buyPrice || ""}
+                                    onChange={(e) =>
+                                      handleEditChange(
+                                        "buyPrice",
+                                        e.target.value,
+                                      )
+                                    }
+                                  />
+                                ) : (
+                                  `$${parseFloat(trade.buyPrice || 0).toFixed(2)}`
+                                )}
+                              </td>
+                              <td>
+                                {isEditing ? (
+                                  <input
+                                    type="number"
+                                    value={rowData?.quantity || ""}
+                                    onChange={(e) =>
+                                      handleEditChange(
+                                        "quantity",
+                                        e.target.value,
+                                      )
+                                    }
+                                  />
+                                ) : (
+                                  trade.quantity || "-"
+                                )}
+                              </td>
+                              <td>
+                                {isEditing ? (
+                                  <input
+                                    type="text"
+                                    value={rowData?.entryLogic || ""}
+                                    onChange={(e) =>
+                                      handleEditChange(
+                                        "entryLogic",
+                                        e.target.value,
+                                      )
+                                    }
+                                  />
+                                ) : (
+                                  trade.entryLogic || "-"
+                                )}
+                              </td>
+                              <td>
+                                {isEditing ? (
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={rowData?.sellPrice || ""}
+                                    onChange={(e) =>
+                                      handleEditChange(
+                                        "sellPrice",
+                                        e.target.value,
+                                      )
+                                    }
+                                  />
+                                ) : (
+                                  `$${parseFloat(trade.sellPrice || 0).toFixed(2)}`
+                                )}
+                              </td>
+                              <td>
+                                {isEditing ? (
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={rowData?.stopLoss || ""}
+                                    onChange={(e) =>
+                                      handleEditChange(
+                                        "stopLoss",
+                                        e.target.value,
+                                      )
+                                    }
+                                  />
+                                ) : (
+                                  `$${parseFloat(trade.stopLoss || 0).toFixed(2)}`
+                                )}
                               </td>
                               <td className={plValue >= 0 ? "profit" : "loss"}>
-                                ${plValue.toFixed(2)}
+                                {isEditing
+                                  ? `$${parseFloat(rowData?.profitLoss || 0).toFixed(2)}`
+                                  : `$${plValue.toFixed(2)}`}
                               </td>
-                              <td>{trade.exitLogic || "-"}</td>
+                              <td>
+                                {isEditing ? (
+                                  <input
+                                    type="text"
+                                    value={rowData?.exitLogic || ""}
+                                    onChange={(e) =>
+                                      handleEditChange(
+                                        "exitLogic",
+                                        e.target.value,
+                                      )
+                                    }
+                                  />
+                                ) : (
+                                  trade.exitLogic || "-"
+                                )}
+                              </td>
                               <td
                                 className={
                                   percentValue >= 0 ? "profit" : "loss"
                                 }
                               >
-                                {percentValue.toFixed(2)}%
+                                {isEditing
+                                  ? `${parseFloat(rowData?.percent || 0).toFixed(2)}%`
+                                  : `${percentValue.toFixed(2)}%`}
                               </td>
                               <td className="notes-cell">
-                                {trade.notes || "-"}
+                                {isEditing ? (
+                                  <input
+                                    type="text"
+                                    value={rowData?.notes || ""}
+                                    onChange={(e) =>
+                                      handleEditChange("notes", e.target.value)
+                                    }
+                                  />
+                                ) : (
+                                  trade.notes || "-"
+                                )}
                               </td>
-                              <td>
-                                <button
-                                  className="delete-btn"
-                                  onClick={() =>
-                                    setTrades(
-                                      trades.filter((t) => t.id !== trade.id)
-                                    )
-                                  }
-                                >
-                                  🗑️
-                                </button>
+                              <td className="action-cell">
+                                {isEditing ? (
+                                  <>
+                                    <button
+                                      className="table-add-btn"
+                                      onClick={saveEditTrade}
+                                    >
+                                      💾
+                                    </button>
+                                    <button
+                                      className="delete-btn"
+                                      onClick={cancelEditTrade}
+                                    >
+                                      ✕
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button
+                                      className="table-add-btn"
+                                      onClick={() => startEditTrade(trade)}
+                                    >
+                                      ✎
+                                    </button>
+                                    <button
+                                      className="delete-btn"
+                                      onClick={() => handleDeleteTrade(tradeId)}
+                                    >
+                                      🗑️
+                                    </button>
+                                  </>
+                                )}
                               </td>
                             </tr>
                           );
@@ -948,8 +1515,8 @@ function App() {
                     {activeTimeRange === "since-inception"
                       ? "Since Inception"
                       : activeTimeRange === "ytd"
-                      ? "YTD"
-                      : "1Y/3Y/Custom"}
+                        ? "YTD"
+                        : "1Y/3Y/Custom"}
                   </p>
                 </div>
               </div>
@@ -962,7 +1529,10 @@ function App() {
                   <div className="stat-card stat-card-12">
                     <div className="stat-icon">📈</div>
                     <div className="stat-content">
-                      <h3>CAGR</h3>
+                      <h3>
+                        CAGR
+                        <InfoIcon text="(Ending Value / Invested)^(1 / Years) - 1." />
+                      </h3>
                       <p className={cagr >= 0 ? "positive" : "negative"}>
                         {(cagr * 100).toFixed(2)}%
                       </p>
@@ -972,7 +1542,10 @@ function App() {
                   <div className="stat-card stat-card-13">
                     <div className="stat-icon">🔁</div>
                     <div className="stat-content">
-                      <h3>Investment Multiple</h3>
+                      <h3>
+                        Investment Multiple
+                        <InfoIcon text="Ending Value / Total Invested." />
+                      </h3>
                       <p className={investmentMultiple >= 1 ? "positive" : ""}>
                         {investmentMultiple.toFixed(2)}x
                       </p>
@@ -982,7 +1555,10 @@ function App() {
                   <div className="stat-card stat-card-14">
                     <div className="stat-icon">🗓️</div>
                     <div className="stat-content">
-                      <h3>Annualized Return</h3>
+                      <h3>
+                        Annualized Return
+                        <InfoIcon text="Total Return % / Years in market." />
+                      </h3>
                       <p
                         className={
                           annualizedReturn >= 0 ? "positive" : "negative"
@@ -996,7 +1572,10 @@ function App() {
                   <div className="stat-card stat-card-15">
                     <div className="stat-icon">📊</div>
                     <div className="stat-content">
-                      <h3>Total Return</h3>
+                      <h3>
+                        Total Return
+                        <InfoIcon text="Net P/L / Total Invested * 100%." />
+                      </h3>
                       <p
                         className={
                           totalReturnPercent >= 0 ? "positive" : "negative"
@@ -1017,7 +1596,10 @@ function App() {
                   <div className="stat-card stat-card-16">
                     <div className="stat-icon">📉</div>
                     <div className="stat-content">
-                      <h3>Max Drawdown</h3>
+                      <h3>
+                        Max Drawdown
+                        <InfoIcon text="Largest peak-to-trough decline in cumulative P/L." />
+                      </h3>
                       <p className="negative">${maxDrawdown.toFixed(2)}</p>
                     </div>
                   </div>
@@ -1025,7 +1607,10 @@ function App() {
                   <div className="stat-card stat-card-17">
                     <div className="stat-icon">📊</div>
                     <div className="stat-content">
-                      <h3>Volatility</h3>
+                      <h3>
+                        Volatility
+                        <InfoIcon text="Standard deviation of trade % returns." />
+                      </h3>
                       <p>{volatility.toFixed(2)}%</p>
                     </div>
                   </div>
@@ -1033,7 +1618,10 @@ function App() {
                   <div className="stat-card stat-card-18">
                     <div className="stat-icon">⬇️</div>
                     <div className="stat-content">
-                      <h3>Downside Deviation</h3>
+                      <h3>
+                        Downside Deviation
+                        <InfoIcon text="Standard deviation of negative trade % returns." />
+                      </h3>
                       <p>{downsideDeviation.toFixed(2)}%</p>
                     </div>
                   </div>
@@ -1041,7 +1629,10 @@ function App() {
                   <div className="stat-card stat-card-19">
                     <div className="stat-icon">🔄</div>
                     <div className="stat-content">
-                      <h3>Recovery Factor</h3>
+                      <h3>
+                        Recovery Factor
+                        <InfoIcon text="Net Profit / |Max Drawdown|." />
+                      </h3>
                       <p
                         className={
                           recoveryFactor >= 1 ? "positive" : "negative"
@@ -1062,7 +1653,10 @@ function App() {
                   <div className="stat-card stat-card-20">
                     <div className="stat-icon">🧭</div>
                     <div className="stat-content">
-                      <h3>Regime-Based Returns</h3>
+                      <h3>
+                        Regime-Based Returns
+                        <InfoIcon text="Average return for up trades vs down trades." />
+                      </h3>
                       <p>
                         Up {avgUpReturn.toFixed(2)}% / Down{" "}
                         {avgDownReturn.toFixed(2)}%
@@ -1073,7 +1667,10 @@ function App() {
                   <div className="stat-card stat-card-21">
                     <div className="stat-icon">🧱</div>
                     <div className="stat-content">
-                      <h3>Drawdown Clustering</h3>
+                      <h3>
+                        Drawdown Clustering
+                        <InfoIcon text="Average length of consecutive losing-trade streaks." />
+                      </h3>
                       <p>{drawdownClustering.toFixed(2)} trades</p>
                     </div>
                   </div>
@@ -1081,7 +1678,10 @@ function App() {
                   <div className="stat-card stat-card-22">
                     <div className="stat-icon">⚖️</div>
                     <div className="stat-content">
-                      <h3>Skew / Kurtosis</h3>
+                      <h3>
+                        Skew / Kurtosis
+                        <InfoIcon text="3rd and 4th standardized moments of returns." />
+                      </h3>
                       <p>
                         {skew.toFixed(2)} / {kurtosis.toFixed(2)}
                       </p>
@@ -1091,7 +1691,10 @@ function App() {
                   <div className="stat-card stat-card-23">
                     <div className="stat-icon">🛡️</div>
                     <div className="stat-content">
-                      <h3>Conditional VaR (5%)</h3>
+                      <h3>
+                        Conditional VaR (5%)
+                        <InfoIcon text="Average of the worst 5% of returns." />
+                      </h3>
                       <p className={conditionalVaR < 0 ? "negative" : ""}>
                         {conditionalVaR.toFixed(2)}%
                       </p>

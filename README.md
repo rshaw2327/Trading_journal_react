@@ -2,76 +2,85 @@
 
 <img width="1311" height="906" alt="image" src="https://github.com/user-attachments/assets/702e725c-b78d-4cf2-b871-2427b9f0757d" />
 
+A modern, responsive trading journal dashboard built with React and Vite. Track trades, review performance, and explore key analytics in a clean UI.
 
+## Features
 
-📊 Trading Journal React App
-
-A modern, responsive trading journal dashboard built with React to help traders track performance, manage risk, and analyze consistency over time.
-
-🚀 Features
-
-📈 Dashboard Overview
-
-Total P/L, Win Rate, Average Return
-
-Max Drawdown, Sharpe Ratio, Sortino Ratio
-
-Risk-to-Reward, Expectancy, Recovery Factor
-
-📝 Trade Entry System
-
-Add trades with entry/exit price, stop loss, quantity, and logic
-
-Auto-calculated profit/loss and percentage returns
-
-📊 Advanced Metrics
-
-Growth Metrics
-
-Risk Metrics
-
-Consistency Metrics
-
-Quant Grade Analysis
-
-🎨 Modern UI
-
-Clean, gradient-based dashboard design
-
-Intuitive navigation and responsive layout
-
-
-
-A React application for tracking and managing your trading journal.
+- **Trade journal** with automatic P/L and % calculations
+- **Dashboard metrics** including win rate, drawdown, Sharpe/Sortino, expectancy, and more
+- **Growth metrics**: CAGR, investment multiple, annualized return, total return
+- **Risk metrics**: max drawdown, volatility, downside deviation, recovery factor
+- **Quant grade analysis**: regime-based returns, drawdown clustering, skew/kurtosis, conditional VaR
+- **Time range selector** UI with sub-tabs (Since Inception, YTD, 1Y/3Y/Custom)
+- **Responsive layout** with sidebar navigation
 
 ## Getting Started
 
 ### Prerequisites
-- Node.js (version 16 or higher)
-- npm or yarn
 
-### Installation
+- Node.js 16+ (18+ recommended)
+- npm
 
-1. Install dependencies:
+### Install
+
 ```bash
 npm install
 ```
 
-2. Start the development server:
+### Run
+
 ```bash
 npm run dev
 ```
 
-3. Open your browser and navigate to `http://localhost:5173`
+Open `http://localhost:5173` in your browser.
 
-### Available Scripts
+## Backend (Express + MongoDB)
 
-- `npm run dev` - Start the development server
-- `npm run build` - Build for production
-- `npm run preview` - Preview the production build
+The backend lives in `server/` and exposes a small REST API.
+
+### Setup
+
+1. Create `server/.env` based on the example:
+
+```bash
+cp server/.env.example server/.env
+```
+
+2. Update `server/.env` with your MongoDB connection string:
+
+```
+MONGODB_URI=your_mongodb_uri_here
+PORT=5000
+```
+
+3. Install backend dependencies and run:
+
+```bash
+npm --prefix server install
+npm run server
+```
+
+API runs at `http://localhost:5000` with:
+
+- `GET /api/health`
+- `GET /api/trades`
+- `POST /api/trades`
+- `DELETE /api/trades/:id`
+
+## Scripts
+
+- `npm run dev` - start the dev server
+- `npm run build` - build for production
+- `npm run preview` - preview the production build
+
+## Notes
+
+- Metrics are computed from the trades entered in the table.
+- Time range tabs are UI-only at the moment (no filtering applied yet).
 
 ## Tech Stack
 
 - React 18
-- Vite (build tool)
-- Modern ES6+ JavaScript
+- Vite
+- JavaScript (ES6+)

@@ -154,7 +154,9 @@
   align-items: center;
   gap: 1rem;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  transition:
+    transform 0.3s ease,
+    box-shadow 0.3s ease;
   position: relative;
   overflow: hidden;
 }
@@ -285,6 +287,9 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 .stat-content p {
@@ -292,6 +297,53 @@
   font-weight: 700;
   color: #333;
   margin: 0;
+}
+
+.info-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #eef2ff;
+  color: #4c51bf;
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: default;
+}
+
+.info-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+}
+
+.info-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.info-modal-content {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #0f172a;
+  color: #f8fafc;
+  padding: 1.25rem 1.5rem;
+  border-radius: 14px;
+  font-size: 1rem;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  line-height: 1.5;
+  width: min(92vw, 620px);
+  text-align: left;
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.45);
 }
 
 .stat-content .positive {
@@ -306,7 +358,7 @@
 .table-container {
   background: white;
   border-radius: 16px;
-  padding: 2rem;
+  padding: 2.5rem;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
   margin-top: 2rem;
 }
@@ -322,8 +374,9 @@
 
 .table-header h2 {
   color: #333;
-  font-size: 1.8rem;
+  font-size: 2.3rem;
   margin: 0;
+  font-weight: 800;
 }
 
 .add-trade-btn {
@@ -345,14 +398,26 @@
 }
 
 .table-wrapper {
-  overflow-x: auto;
+  overflow-x: hidden;
   border-radius: 8px;
+}
+
+.table-scrollbar {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.table-scrollbar-content {
+  height: 1px;
 }
 
 .trades-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.9rem;
+  font-size: 1.05rem;
+  border-spacing: 0 12px;
 }
 
 .trades-table thead {
@@ -361,16 +426,16 @@
 }
 
 .trades-table th {
-  padding: 1rem 0.75rem;
+  padding: 1.1rem 0.9rem;
   text-align: left;
   font-weight: 600;
   text-transform: uppercase;
-  font-size: 0.8rem;
+  font-size: 0.9rem;
   letter-spacing: 0.5px;
 }
 
 .trades-table tbody tr {
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 2px solid #e5e7eb;
   transition: background-color 0.2s ease;
 }
 
@@ -378,23 +443,77 @@
   background-color: #f9fafb;
 }
 
+.trades-table tbody tr:nth-child(even) {
+  background-color: #fbfdff;
+}
+
+.trades-table tbody tr.trade-row {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+}
+
+.trades-table tbody tr.trade-row td:first-child {
+  border-top-left-radius: 12px;
+  border-bottom-left-radius: 12px;
+}
+
+.trades-table tbody tr.trade-row td:last-child {
+  border-top-right-radius: 12px;
+  border-bottom-right-radius: 12px;
+}
+
 .trades-table tbody tr.new-trade-row {
   background-color: #f0f4ff;
+  border: 1px dashed #c7d2fe;
 }
 
 .trades-table td {
-  padding: 1rem 0.75rem;
+  padding: 1.1rem 0.9rem;
   color: #333;
+  border-right: 1px solid #eef2f7;
+  min-width: 120px;
+}
+
+.trades-table td:last-child,
+.trades-table th:last-child {
+  border-right: none;
 }
 
 .trades-table input {
   width: 100%;
-  padding: 0.5rem;
+  padding: 0.7rem 0.75rem;
   border: 2px solid #e5e7eb;
-  border-radius: 6px;
-  font-size: 0.9rem;
+  border-radius: 8px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #0f172a;
+  background: #ffffff;
   transition: border-color 0.2s ease;
   font-family: inherit;
+}
+
+.trades-table select {
+  width: 100%;
+  padding: 0.7rem 0.75rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #0f172a;
+  transition: border-color 0.2s ease;
+  font-family: inherit;
+  background: white;
+}
+
+.trades-table input::placeholder {
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.trades-table td .symbol-cell input,
+.trades-table td .notes-cell input {
+  min-width: 140px;
 }
 
 .trades-table input:focus {
@@ -442,9 +561,9 @@
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   color: white;
   border: none;
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
-  font-size: 0.9rem;
+  padding: 0.6rem 1.1rem;
+  border-radius: 8px;
+  font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -455,12 +574,17 @@
   box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
 }
 
+.action-cell {
+  display: flex;
+  gap: 0.5rem;
+}
+
 .delete-btn {
   background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
   color: white;
   border: none;
-  padding: 0.5rem 0.75rem;
-  border-radius: 6px;
+  padding: 0.6rem 0.85rem;
+  border-radius: 8px;
   font-size: 1rem;
   cursor: pointer;
   transition: all 0.2s ease;
