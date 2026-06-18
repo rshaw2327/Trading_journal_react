@@ -2,7 +2,11 @@ import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
 import mongoose from "mongoose";
+import path from "path";
+import { fileURLToPath } from "url";
 import tradesRouter from "./routes/trades.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 dotenv.config();
 
@@ -18,12 +22,17 @@ if (!mongoUri) {
 
 app.use(cors());
 app.use(express.json());
+app.use(express.static(path.join(__dirname, "../dist")));
 
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
 app.use("/api/trades", tradesRouter);
+
+app.get("*", (_req, res) => {
+  res.sendFile(path.join(__dirname, "../dist", "index.html"));
+});
 
 mongoose
   .connect(mongoUri)
