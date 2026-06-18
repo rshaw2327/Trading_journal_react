@@ -27,7 +27,7 @@ const InfoIcon = ({ text }) => {
 };
 
 function App() {
-  const apiBase = import.meta.env.VITE_API_URL || "http://localhost:5000";
+  const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "" : "http://localhost:5000");
   const [trades, setTrades] = useState([]);
   const [newTrade, setNewTrade] = useState({
     date: "",
